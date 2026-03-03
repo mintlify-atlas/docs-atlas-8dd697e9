@@ -1,0 +1,211 @@
+---
+title: Spells
+description: Master the spell system with red and blue spells in Wizard Duel
+---
+
+## Spell system overview
+
+Wizard Duel features two distinct spells, each with unique properties. Spells are cast toward your mouse cursor position in world coordinates and travel automatically toward their target.
+
+```cpp
+struct Ball{
+    Color spellColor = RED;
+    Vector2 ball_pos = {};
+    Vector2 target_pos = {};  // Renamed from mouse_pos
+    float ball_r = 25.0f;
+    float ball_speed;
+    float damage = 0.0f;
+};
+```
+
+## Red spell
+
+The red spell is a slower, larger projectile with higher radius and damage.
+
+<ParamField path="Keybind" type="string">
+  Hold KEY_ONE (1) + Left Mouse Button
+</ParamField>
+
+<ParamField path="Mana cost" type="float">
+  25.0f (requires at least 25.0f mana to cast)
+</ParamField>
+
+<ParamField path="Color" type="color">
+  bloodRed `{ 128, 0, 0, 255 }`
+</ParamField>
+
+<ParamField path="Speed" type="float">
+  2.0f units per frame
+</ParamField>
+
+<ParamField path="Initial radius" type="float">
+  35.0f pixels
+</ParamField>
+
+<ParamField path="Damage" type="float">
+  Calculated as `1.0f * ball_r` (35.0f damage at full radius)
+</ParamField>
+
+```cpp
+if (IsKeyDown(KEY_ONE)){
+    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)){
+        if (all_players[0].mana >= 25.0f){
+            Ball red_ball;
+            all_players[0].is_cast = true;
+            red_ball.target_pos = mouse_world;
+            all_players[0].mana = all_players[0].mana - 5.0f;
+            red_ball.spellColor = bloodRed;
+            red_ball.ball_speed = 2.0f;
+            red_ball.ball_pos = all_players[0].pos;
+            red_ball.ball_r = 35.0f;
+            red_ball.damage = 1.0f * red_ball.ball_r;
+            ball_vec.push_back(red_ball);
+        }
+    }
+}
+```
+
+<Note>
+  The red spell's larger radius (35.0f) makes it easier to hit targets but travels slower at 2.0f speed.
+</Note>
+
+## Blue spell
+
+The blue spell is a faster projectile with standard radius, requiring more mana to cast.
+
+<ParamField path="Keybind" type="string">
+  Hold KEY_TWO (2) + Left Mouse Button
+</ParamField>
+
+<ParamField path="Mana cost" type="float">
+  35.0f (requires at least 35.0f mana to cast)
+</ParamField>
+
+<ParamField path="Color" type="color">
+  DARKBLUE (Raylib DARKBLUE constant)
+</ParamField>
+
+<ParamField path="Speed" type="float">
+  4.0f units per frame (2x faster than red spell)
+</ParamField>
+
+<ParamField path="Initial radius" type="float">
+  25.0f pixels (default Ball radius)
+</ParamField>
+
+<ParamField path="Damage" type="float">
+  Calculated as `1.0f * ball_r` (25.0f damage at full radius)
+</ParamField>
+
+```cpp
+else if (IsKeyDown(KEY_TWO)){
+    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)){
+        if (all_players[0].mana >= 35.0f){
+            Ball blue_ball;
+            all_players[0].is_cast = true;
+            blue_ball.target_pos = mouse_world;
+            all_players[0].mana = all_players[0].mana - 5.0f;
+            blue_ball.spellColor = DARKBLUE;
+            blue_ball.ball_pos = all_players[0].pos;
+            blue_ball.ball_speed = 4.0f;
+            blue_ball.damage = 1.0f * blue_ball.ball_r;
+            ball_vec.push_back(blue_ball);
+        }
+    }
+}
+```
+
+<Note>
+  The blue spell is twice as fast (4.0f vs 2.0f) but costs more mana and has a smaller radius.
+</Note>
+
+## Spell mechanics
+
+### Projectile movement
+
+Spells travel toward their target position using normalized direction vectors:
+
+```cpp
+Vector2 direction = {
+    current_ball.target_pos.x - current_ball.ball_pos.x,
+    current_ball.target_pos.y - current_ball.ball_pos.y
+};
+
+float length = sqrt(direction.x * direction.x +
+                   direction.y * direction.y);
+
+if (length > 1.0f)
+{
+    direction.x /= length;
+    direction.y /= length;
+
+    current_ball.ball_pos.x += direction.x * current_ball.ball_speed;
+    current_ball.ball_pos.y += direction.y * current_ball.ball_speed;
+}
+```
+
+### Spell decay
+
+All spells shrink over time at a rate of 0.1f radius per frame:
+
+```cpp
+current_ball.ball_r -= 0.1f;
+```
+
+<Warning>
+  Spells automatically despawn when their radius reaches zero. Plan your shots carefully!
+</Warning>
+
+### Tree collision
+
+Spells can destroy trees when colliding with them:
+
+```cpp
+for (int b = 0; b < ball_vec.size(); b++) {
+    for (int t = 0; t < tree_pos.size(); t++) {
+        Rectangle tree_rect = { tree_pos[t].x, tree_pos[t].y, 20, 60 };
+
+        if (CheckCollisionCircleRec(
+                ball_vec[b].ball_pos,
+                ball_vec[b].ball_r,
+                tree_rect))
+        {
+            if (ball_vec[b].ball_r >= 4.0f){
+                tree_pos[t] = {0, 0};
+            }
+            ball_vec[b].ball_r -= 5.0f;
+            break;
+        }
+    }
+}
+```
+
+<Note>
+  Trees are destroyed if the spell radius is at least 4.0f. Each collision reduces spell radius by 5.0f.
+</Note>
+
+## Spell comparison
+
+<Tabs>
+  <Tab title="Red spell">
+    **Strengths:**
+    - Lower mana cost (25.0f vs 35.0f)
+    - Larger radius (35.0f vs 25.0f) = easier to hit
+    - Higher damage (35.0f vs 25.0f)
+    
+    **Weaknesses:**
+    - Slower travel speed (2.0f vs 4.0f)
+    - Easier for opponents to dodge
+  </Tab>
+  <Tab title="Blue spell">
+    **Strengths:**
+    - Faster travel speed (4.0f vs 2.0f)
+    - Harder for opponents to dodge
+    - Better for long-range combat
+    
+    **Weaknesses:**
+    - Higher mana cost (35.0f vs 25.0f)
+    - Smaller radius (25.0f vs 35.0f) = harder to hit
+    - Lower damage (25.0f vs 35.0f)
+  </Tab>
+</Tabs>

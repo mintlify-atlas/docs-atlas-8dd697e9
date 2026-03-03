@@ -1,0 +1,193 @@
+---
+title: Game structures
+description: Core C++ data structures used in Wizard Duel for character management, spell projectiles, and network communication.
+---
+
+## Character
+
+The main structure representing a player or opponent in the game, including health, mana, position, and death state management.
+
+```cpp
+struct Character {
+    float health = 300.0f;
+    float mana = 300.0f;
+    double health_timer = 0.0;
+    bool draining_mana = false;
+    bool is_cast = false;
+    float deathTime = 0.0f;
+    bool isDead = false;
+    bool deathSoundPlayed = false;
+    bool is_local = false;
+    Vector2 pos = {};
+    Rectangle rect = { 0, 0, 20, 40 };
+};
+```
+
+### Fields
+
+<ParamField path="health" type="float" default="300.0f">
+  Current health points of the character. When health reaches 0, the character dies. Can exceed maximum when shields are active.
+</ParamField>
+
+<ParamField path="mana" type="float" default="300.0f">
+  Current mana points used for casting spells and abilities. Drains when camera zoom is below 5.0f, regenerates above 5.0f.
+</ParamField>
+
+<ParamField path="health_timer" type="double" default="0.0">
+  Timer used to track shield decay intervals. When health exceeds 300.0f, this timer counts up to 2.0 seconds before reducing health by 3.0f.
+</ParamField>
+
+<ParamField path="draining_mana" type="bool" default="false">
+  Indicates whether the character is currently draining mana due to camera zoom being below the threshold (5.0f).
+</ParamField>
+
+<ParamField path="is_cast" type="bool" default="false">
+  Tracks whether the character has cast a spell and projectiles are currently active in the world.
+</ParamField>
+
+<ParamField path="deathTime" type="float" default="0.0f">
+  Timer for death animation fade effect. Ranges from 0.0f to 1.0f, incremented by GetFrameTime() * 0.5f when character dies.
+</ParamField>
+
+<ParamField path="isDead" type="bool" default="false">
+  Indicates whether the character is currently dead. Set to true when health drops to or below 0.0f.
+</ParamField>
+
+<ParamField path="deathSoundPlayed" type="bool" default="false">
+  Ensures the death sound effect plays only once per death. Reset to false when character respawns.
+</ParamField>
+
+<ParamField path="is_local" type="bool" default="false">
+  Distinguishes between the local player (true) and opponents (false). Used for rendering, input handling, and network synchronization.
+</ParamField>
+
+<ParamField path="pos" type="Vector2" default="{}">
+  World position coordinates of the character. Initialized randomly within safe spawn areas and updated based on movement input.
+</ParamField>
+
+<ParamField path="rect" type="Rectangle" default="{ 0, 0, 20, 40 }">
+  Collision rectangle for the character with width 20 and height 40. Used for collision detection with trees and boundaries.
+</ParamField>
+
+<Expandable title="Usage example">
+  ```cpp
+  Character player;
+  player.is_local = true;
+  player.pos.x = 640.0f;
+  player.pos.y = 360.0f;
+  
+  // Check if player can cast spell
+  if (player.mana >= 25.0f && !player.isDead) {
+      player.is_cast = true;
+      player.mana -= 5.0f;
+  }
+  ```
+</Expandable>
+
+---
+
+## Ball
+
+Represents a spell projectile cast by a character, including its appearance, trajectory, and damage properties.
+
+```cpp
+struct Ball {
+    Color spellColor = RED;
+    Vector2 ball_pos = {};
+    Vector2 target_pos = {};
+    float ball_r = 25.0f;
+    float ball_speed;
+    float damage = 0.0f;
+};
+```
+
+### Fields
+
+<ParamField path="spellColor" type="Color" default="RED">
+  Visual color of the spell projectile. Red spells (bloodRed = {128, 0, 0, 255}) use radius 35.0f, blue spells (DARKBLUE) use default 25.0f radius.
+</ParamField>
+
+<ParamField path="ball_pos" type="Vector2" default="{}">
+  Current world position of the projectile. Updated each frame based on direction and ball_speed.
+</ParamField>
+
+<ParamField path="target_pos" type="Vector2" default="{}">
+  Target destination in world coordinates where the player aimed when casting. Projectile moves toward this position.
+</ParamField>
+
+<ParamField path="ball_r" type="float" default="25.0f">
+  Current radius of the projectile in pixels. Decreases by 0.1f per frame and by 5.0f when colliding with trees.
+</ParamField>
+
+<ParamField path="ball_speed" type="float">
+  Movement speed multiplier for the projectile. Red spell (KEY_ONE) uses 2.0f, blue spell (KEY_TWO) uses 4.0f.
+</ParamField>
+
+<ParamField path="damage" type="float" default="0.0f">
+  Damage dealt by the projectile on impact. Calculated as 1.0f * ball_r at creation time.
+</ParamField>
+
+<Expandable title="Spell types">
+  **Red spell (KEY_ONE)**
+  - Color: bloodRed {128, 0, 0, 255}
+  - Radius: 35.0f
+  - Speed: 2.0f
+  - Mana cost: 5.0f (requires 25.0f minimum)
+  - Damage: 35.0f (1.0f * 35.0f)
+  
+  **Blue spell (KEY_TWO)**
+  - Color: DARKBLUE
+  - Radius: 25.0f (default)
+  - Speed: 4.0f
+  - Mana cost: 5.0f (requires 35.0f minimum)
+  - Damage: 25.0f (1.0f * 25.0f)
+</Expandable>
+
+---
+
+## PositionPacket
+
+Network packet structure for synchronizing character positions between client and server in multiplayer mode.
+
+```cpp
+struct PositionPacket {
+    float x;
+    float y;
+};
+```
+
+### Fields
+
+<ParamField path="x" type="float">
+  X-coordinate of the character's position in world space. Sent over the network when position changes.
+</ParamField>
+
+<ParamField path="y" type="float">
+  Y-coordinate of the character's position in world space. Sent over the network when position changes.
+</ParamField>
+
+<Expandable title="Network usage">
+  ```cpp
+  // Sending position update
+  if (all_players[0].pos.x != old_pos.x || all_players[0].pos.y != old_pos.y) {
+      PositionPacket posPacket;
+      posPacket.x = all_players[0].pos.x;
+      posPacket.y = all_players[0].pos.y;
+      
+      ENetPacket* packet = enet_packet_create(
+          &posPacket,
+          sizeof(PositionPacket),
+          ENET_PACKET_FLAG_RELIABLE
+      );
+      enet_peer_send(serverPeer, 0, packet);
+  }
+  
+  // Receiving position update
+  if (event.type == ENET_EVENT_TYPE_RECEIVE) {
+      PositionPacket* posPacket = (PositionPacket*)event.packet->data;
+      all_players[1].pos.x = posPacket->x;
+      all_players[1].pos.y = posPacket->y;
+      enet_packet_destroy(event.packet);
+  }
+  ```
+</Expandable>

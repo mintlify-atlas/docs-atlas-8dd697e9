@@ -1,0 +1,187 @@
+---
+title: Configuration
+description: Game configuration constants and default values for Wizard Duel, including network settings, display properties, world parameters, and gameplay values.
+---
+
+## Network settings
+
+Configuration for client-server multiplayer connections using ENet.
+
+<ParamField path="SERVER_IP" type="const char*" default="127.0.0.1">
+  IP address for server connections. Default localhost for local multiplayer testing.
+</ParamField>
+
+<ParamField path="SERVER_PORT" type="const int" default="7777">
+  Port number used for hosting and joining multiplayer games.
+</ParamField>
+
+<Expandable title="Network configuration">
+  The game uses ENet for UDP-based networking with the following parameters:
+  - Max clients: 1 (1v1 gameplay)
+  - Max channels: 2
+  - Bandwidth: Unlimited (0)
+  - Packet flag: ENET_PACKET_FLAG_RELIABLE
+</Expandable>
+
+---
+
+## Display settings
+
+Window and rendering configuration constants.
+
+<ParamField path="screenWidth" type="const int" default="1280">
+  Width of the game window in pixels.
+</ParamField>
+
+<ParamField path="screenHeight" type="const int" default="720">
+  Height of the game window in pixels. Window title is set to "WIZARD DUEL".
+</ParamField>
+
+<ParamField path="FPS" type="int" default="60">
+  Target frames per second set via SetTargetFPS(60). Controls game loop timing.
+</ParamField>
+
+---
+
+## Camera settings
+
+Camera zoom limits and default values for the 2D camera system.
+
+<ParamField path="default zoom" type="float" default="7.0f">
+  Initial camera zoom level when game starts. Higher values zoom in closer to the character.
+</ParamField>
+
+<ParamField path="minimum zoom" type="float" default="1.5f">
+  Minimum allowed camera zoom level. Provides maximum view distance but drains mana.
+</ParamField>
+
+<ParamField path="maximum zoom" type="float" default="10.0f">
+  Maximum allowed camera zoom level. Closest view to the character.
+</ParamField>
+
+<ParamField path="reset zoom" type="float" default="9.9f">
+  Zoom level when pressing KEY_R to reset the camera view.
+</ParamField>
+
+<Expandable title="Camera controls and mana">
+  **Zoom controls:**
+  - KEY_Z: Increase zoom by 0.02f per frame
+  - KEY_X: Decrease zoom by 0.02f per frame
+  - KEY_R: Reset zoom to 9.9f
+  
+  **Mana interaction:**
+  - Zoom &lt; 5.0f: Drains mana at rate of (zoom * 0.03f) per frame
+  - Zoom &gt; 5.0f: Regenerates mana at rate of 0.01f per frame (if mana &lt; 300)
+  
+  **Camera offset:**
+  - Centered at (screenWidth / 2.0f, screenHeight / 2.0f)
+  - Target follows local player at (pos.x + 20, pos.y + 20)
+</Expandable>
+
+---
+
+## World parameters
+
+World boundaries and environmental object configuration.
+
+<ParamField path="world width" type="int" default="2000">
+  Maximum X-coordinate boundary of the playable world. Character dies if position exceeds this value.
+</ParamField>
+
+<ParamField path="world height" type="int" default="2000">
+  Maximum Y-coordinate boundary of the playable world. Character dies if position falls below 0 or exceeds this value.
+</ParamField>
+
+<ParamField path="number_of_trees" type="int" default="115">
+  Number of tree obstacles spawned randomly throughout the world. Trees block character movement and interact with spell projectiles.
+</ParamField>
+
+<Expandable title="Tree properties">
+  **Tree dimensions:**
+  - Collision rectangle: 20 x 60 pixels
+  - Texture: assets/tree.png
+  
+  **Tree spawning:**
+  - Random X position: 0 to 2000
+  - Random Y position: 0 to 2000
+  - Player safe spawn ensures no collision with trees
+  
+  **Tree interactions:**
+  - Blocks character movement (collision detection)
+  - Spell projectiles with radius &gt;= 4.0f destroy trees
+  - Collision reduces projectile radius by 5.0f
+  - Destroyed trees moved to position (0, 0)
+</Expandable>
+
+---
+
+## Character defaults
+
+Default values for character attributes and gameplay mechanics.
+
+<ParamField path="default health" type="float" default="300.0f">
+  Starting and maximum health points for all characters. Health can exceed this value when using shields (RIGHT_MOUSE_BUTTON).
+</ParamField>
+
+<ParamField path="default mana" type="float" default="300.0f">
+  Starting and maximum mana points for all characters. Used for casting spells and healing.
+</ParamField>
+
+<ParamField path="movement speed" type="float" default="0.5f">
+  Character movement speed per frame when pressing WASD keys.
+</ParamField>
+
+<ParamField path="character dimensions" type="Rectangle" default="{ 0, 0, 20, 40 }">
+  Character collision rectangle with width 20 and height 40 pixels.
+</ParamField>
+
+<Expandable title="Health and mana mechanics">
+  **Health management:**
+  - Shield (RIGHT_MOUSE_BUTTON): Converts 10.0f mana to 2.0f health (requires mana &gt; 12.0f)
+  - Overshield decay: -3.0f health every 2 seconds when health &gt; 300.0f
+  - Death trigger: health &lt;= 0.0f
+  - Boundary death: Character exits world bounds (0-2000 range)
+  
+  **Mana management:**
+  - Spell costs: 5.0f mana per cast
+  - Red spell minimum: 25.0f mana required
+  - Blue spell minimum: 35.0f mana required
+  - Regeneration: +0.01f per frame when zoom &gt; 5.0f and mana &lt; 300
+  - Drain: -(zoom * 0.03f) per frame when zoom &lt; 5.0f
+  
+  **Death system:**
+  - Death animation duration: 0.0f to 1.0f over time
+  - Death text appears at deathTime &gt;= 0.6f
+  - Auto-reset to menu at deathTime &gt;= 1.0f
+  - All stats reset to defaults on respawn
+</Expandable>
+
+---
+
+## Color constants
+
+Predefined color values used throughout the game.
+
+<ParamField path="bloodRed" type="Color" default="{ 128, 0, 0, 255 }">
+  Dark red color for the red spell projectile (KEY_ONE). RGBA values: R=128, G=0, B=0, A=255.
+</ParamField>
+
+<ParamField path="spellColor" type="Color" default="RED">
+  Default spell color constant set to Raylib's RED color.
+</ParamField>
+
+<Expandable title="Other colors used">
+  **UI colors:**
+  - Menu background: BLACK
+  - Button hover states: MAROON, DARKGREEN, DARKBLUE, DARKGRAY
+  - Button default states: RED, GREEN, BLUE, GRAY
+  
+  **Gameplay colors:**
+  - Health bar: RED
+  - Mana bar: PURPLE
+  - Bar backgrounds: DARKGRAY
+  - Local player tint: WHITE
+  - Opponent tint: GRAY
+  - Blue spell: DARKBLUE
+  - Death screen: Faded BLACK and RED
+</Expandable>

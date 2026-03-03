@@ -1,0 +1,122 @@
+---
+title: Hosting a game
+description: Set up a server and wait for players to join
+---
+
+To host a multiplayer game, one player must set up a server that listens for incoming connections. The `SetupHost()` function handles all server initialization.
+
+## How hosting works
+
+<Steps>
+  <Step title="Configure the server address">
+    The server binds to all available network interfaces on the specified port:
+
+    ```cpp main.cpp
+    ENetAddress address;
+    address.host = ENET_HOST_ANY;
+    address.port = SERVER_PORT;
+    ```
+
+    `ENET_HOST_ANY` allows the server to accept connections on any network interface.
+  </Step>
+
+  <Step title="Create the ENet host">
+    Create the server host with the following parameters:
+
+    ```cpp main.cpp
+    serverHost = enet_host_create(
+        &address,
+        1, // max clients
+        2, // max channels
+        0, // incoming bandwidth (0 = unlimited)
+        0  // outgoing bandwidth (0 = unlimited)
+    );
+    ```
+
+    **Parameters:**
+    - **Max clients**: `1` - Only one client can connect for 1v1 gameplay
+    - **Max channels**: `2` - Two communication channels available
+    - **Bandwidth limits**: `0` - No bandwidth restrictions
+  </Step>
+
+  <Step title="Verify host creation">
+    Check if the host was created successfully:
+
+    ```cpp main.cpp
+    if (serverHost == NULL){
+        printf("failed to create server host");
+        return false;
+    }
+    printf("Server hosting on port %d\n" , SERVER_PORT);
+    return true;
+    ```
+
+    If creation fails, the function returns `false` and the game returns to the main menu.
+  </Step>
+
+  <Step title="Wait for connections">
+    The game enters the `HOSTING` state and waits for a client to connect:
+
+    ```cpp main.cpp
+    ENetEvent event;
+    while (enet_host_service(serverHost, &event, 0) > 0) {
+        if (event.type == ENET_EVENT_TYPE_CONNECT) {
+            printf("Client connected!\n");
+            clientPeer = event.peer;
+            connectionState = "CONNECTED";
+            
+            // Start the game
+            state = "MULTIPLAYER";
+        }
+    }
+    ```
+
+    Once a client connects, the game transitions to the multiplayer gameplay state.
+  </Step>
+</Steps>
+
+## Complete SetupHost function
+
+```cpp main.cpp
+bool SetupHost(){
+    ENetAddress address;
+    address.host = ENET_HOST_ANY;
+    address.port = SERVER_PORT;
+    // making the server host
+    serverHost = enet_host_create(
+        &address,
+        1, // max clients
+        2, // max channels
+        0, // incoming bandwidth (0 = unlimited)
+        0
+    );
+    if (serverHost == NULL){
+        printf("failed to create server host");
+        return false;
+    }
+    printf("Server hosting on port %d\n" , SERVER_PORT);
+    return true;
+}
+```
+
+## Network variables
+
+The following global variables manage the host connection:
+
+```cpp main.cpp
+ENetHost* serverHost = nullptr; // for host server
+ENetPeer* clientPeer = nullptr; // for host connection to client
+```
+
+<Note>
+When hosting, the server uses `serverHost` to manage the connection and stores the connected client in `clientPeer`.
+</Note>
+
+## Troubleshooting
+
+<Warning>
+If the server fails to start, ensure:
+- Port 7777 is not already in use by another application
+- Firewall settings allow incoming connections on port 7777
+- ENet has been properly initialized before calling `SetupHost()`
+</Warning>

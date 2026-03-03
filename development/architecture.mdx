@@ -1,0 +1,220 @@
+---
+title: Code architecture
+description: Comprehensive overview of Wizard Duel's game architecture, including state management, game loop, and core subsystems
+---
+
+## Overview
+
+Wizard Duel is built using C++17 with raylib for graphics and ENet for networking. The game follows a state-based architecture with a single main loop handling all game states, rendering, and network operations.
+
+## Game states
+
+The game uses a string-based state system stored in the `state` variable:
+
+<Accordion title="MENU - Main menu state">
+The entry point of the game where players can:
+- Start singleplayer game
+- Host a multiplayer game
+- Join an existing game
+- Quit the application
+
+Implements button hover effects and mouse interaction detection using `CheckCollisionPointRec`.
+</Accordion>
+
+<Accordion title="SINGLE - Singleplayer mode">
+Local gameplay with AI opponent. Features:
+- Full game mechanics (movement, spells, health/mana)
+- Camera following local player
+- Collision detection with trees
+- Death and respawn system
+</Accordion>
+
+<Accordion title="HOST - Server hosting state">
+Transitional state for creating a game server:
+- Calls `SetupHost()` to initialize ENet server
+- Waits for `ENET_EVENT_TYPE_CONNECT` event
+- Transitions to `MULTIPLAYER` when client connects
+- Displays "Waiting for player to join" message
+</Accordion>
+
+<Accordion title="JOIN - Client connection state">
+Transitional state for joining a hosted game:
+- Calls `SetupClient()` to connect to server
+- Monitors connection status via `enet_host_service`
+- Transitions to `MULTIPLAYER` on successful connection
+- Shows "Connecting to host..." status
+</Accordion>
+
+<Accordion title="MULTIPLAYER - Online gameplay">
+Full networked gameplay with position synchronization:
+- Sends `PositionPacket` when local player moves
+- Receives and applies opponent position updates
+- Displays ping/latency information
+- Handles both client and server network events
+</Accordion>
+
+## Main game loop
+
+The game runs at 60 FPS (set via `SetTargetFPS(60)`) with a single while loop:
+
+```cpp
+while (!WindowShouldClose()) {
+    // Input handling (mouse, keyboard)
+    Vector2 mouse_world = GetScreenToWorld2D(GetMousePosition(), camera);
+    
+    // Movement and collision detection
+    Vector2 old_pos = all_players[0].pos;
+    if (IsKeyDown(KEY_D)) all_players[0].pos.x += 0.5f;
+    // ... other movement keys
+    if (checkCollision(all_players[0].pos, tree_pos)) {
+        all_players[0].pos = old_pos;
+    }
+    
+    // State-specific rendering
+    BeginDrawing();
+    if (state == "MENU") { /* menu rendering */ }
+    else if (state == "SINGLE") { /* game rendering */ }
+    // ... other states
+    EndDrawing();
+}
+```
+
+<Note>
+The game loop structure places input handling before rendering, with state-specific logic contained in if-else blocks within the main loop.
+</Note>
+
+## Camera system
+
+The game uses raylib's `Camera2D` for world-space rendering:
+
+```cpp
+Camera2D camera = { 0 };
+camera.target.x = all_players[0].pos.x + all_players[0].rect.width / 2;
+camera.target.y = all_players[0].pos.y + all_players[0].rect.height / 2;
+camera.offset = (Vector2){ screenWidth / 2.0f, screenHeight / 2.0f };
+camera.zoom = 7.0f;
+```
+
+### Key camera features
+
+**Dynamic tracking**: Camera target updates each frame to follow the local player:
+```cpp
+camera.target = (Vector2){ all_players[0].pos.x + 20, all_players[0].pos.y + 20 };
+```
+
+**Zoom controls**: Players can adjust zoom with Z/X keys (range: 1.5x to 10.0x)
+
+**Mana drain mechanic**: Zooming out below 5.0x drains mana progressively
+
+**World-to-screen conversion**: Mouse input is converted to world coordinates:
+```cpp
+Vector2 mouse_world = GetScreenToWorld2D(GetMousePosition(), camera);
+```
+
+## Asset loading system
+
+Assets are loaded at startup and unloaded before window close:
+
+```cpp
+// Load images
+Image island = LoadImage("assets/island.png");
+Texture2D island_img = LoadTextureFromImage(island);
+UnloadImage(island); // Free CPU memory, keep GPU texture
+
+// Load audio
+Sound deathSound = LoadSound("assets/music/death.mp3");
+
+// Cleanup on exit
+UnloadTexture(island_img);
+UnloadSound(deathSound);
+```
+
+<Tip>
+The pattern of loading images, converting to textures, then immediately unloading images optimizes memory by keeping only GPU textures.
+</Tip>
+
+## Character system
+
+The `Character` struct manages player state:
+
+```cpp
+struct Character {
+    float health = 300.0f;
+    float mana = 300.0f;
+    double health_timer = 0.0;
+    bool draining_mana = false;
+    bool is_cast = false;
+    float deathTime = 0.0f;
+    bool isDead = false;
+    bool deathSoundPlayed = false;
+    bool is_local = false; // Distinguishes local player from opponents
+    Vector2 pos = {};
+    Rectangle rect = { 0, 0, 20, 40 };
+};
+```
+
+Players are stored in `std::vector<Character> all_players` with index 0 always being the local player.
+
+## Spell system
+
+Spells are represented by the `Ball` struct:
+
+```cpp
+struct Ball {
+    Color spellColor = RED;
+    Vector2 ball_pos = {};
+    Vector2 target_pos = {};
+    float ball_r = 25.0f;
+    float ball_speed;
+    float damage = 0.0f;
+};
+```
+
+### Spell types
+
+- **KEY_ONE**: Blood spell (red, slow, large radius, 35.0f radius, 2.0f speed)
+- **KEY_TWO**: Arcane spell (blue, fast, small radius, 25.0f radius, 4.0f speed)
+
+Spells move toward their target position using normalized direction vectors and shrink over time (`ball_r -= 0.1f` per frame).
+
+## Collision detection
+
+Two main collision systems:
+
+**Player-tree collision**:
+```cpp
+bool checkCollision(Vector2 player_pos, std::vector<Vector2>& trees_pos) {
+    Rectangle player_rect = {player_pos.x, player_pos.y, 20, 40};
+    for (int i = 0; i < trees_pos.size(); i++) {
+        Rectangle tree_rect = {trees_pos[i].x, trees_pos[i].y, 20, 60};
+        if (CheckCollisionRecs(player_rect, tree_rect)) {
+            return true;
+        }
+    }
+    return false;
+}
+```
+
+**Spell-tree collision**: Uses `CheckCollisionCircleRec` to detect spell impacts, reducing tree positions to {0, 0} on destruction.
+
+## World generation
+
+The game world is procedurally generated:
+
+- **Map size**: 2000x2000 units
+- **Trees**: 115 randomly placed trees using `std::mt19937` random generation
+- **Boundary checking**: Players take damage when leaving map bounds (x/y < 0 or > 2000)
+
+## Performance target
+
+The game targets 60 FPS using raylib's frame limiting:
+
+```cpp
+SetTargetFPS(60);
+```
+
+This ensures consistent physics, movement speed (0.5 units per frame), and spell decay rates across different hardware.
+
+<Note>
+All movement and spell speeds are frame-dependent, making the 60 FPS target critical for gameplay consistency.
+</Note>

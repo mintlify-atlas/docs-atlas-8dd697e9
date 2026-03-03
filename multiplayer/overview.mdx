@@ -1,0 +1,117 @@
+---
+title: Multiplayer overview
+description: Real-time 1v1 wizard battles using ENet networking
+---
+
+Wizard Duel supports real-time multiplayer battles between two players using the ENet networking library. One player hosts the game while another joins, and position data is synchronized in real-time.
+
+## Features
+
+- **1v1 battles**: Supports two players in direct combat
+- **Real-time synchronization**: Player positions are transmitted and updated every frame
+- **Low-latency networking**: Built on ENet for reliable UDP networking
+- **Ping display**: Shows round-trip time to monitor connection quality
+
+## Network configuration
+
+The game uses the following network settings:
+
+```cpp main.cpp
+const char* SERVER_IP = "127.0.0.1";
+const int SERVER_PORT = 7777;
+```
+
+<Note>
+By default, the server runs on localhost (127.0.0.1) on port 7777. For LAN play, the host should replace `SERVER_IP` with their local network IP address.
+</Note>
+
+## Connection states
+
+The game tracks connection status using four states:
+
+- **DISCONNECTED**: No active connection, initial state
+- **HOSTING**: Server is running and waiting for a client to join
+- **JOINING**: Client is attempting to connect to a server
+- **CONNECTED**: Connection established, game is active
+
+```cpp main.cpp
+std::string connectionState = "DISCONNECTED";
+```
+
+## Position synchronization
+
+Player positions are synchronized using the `PositionPacket` structure:
+
+```cpp main.cpp
+struct PositionPacket {
+    float x;
+    float y;
+};
+```
+
+When a player moves, their position is packaged and sent to the opponent:
+
+```cpp main.cpp
+if (all_players[0].pos.x != old_pos.x || all_players[0].pos.y != old_pos.y){
+    PositionPacket posPacket;
+    posPacket.x = all_players[0].pos.x;
+    posPacket.y = all_players[0].pos.y;
+
+    ENetPacket* packet = enet_packet_create(
+        &posPacket,
+        sizeof(PositionPacket),
+        ENET_PACKET_FLAG_RELIABLE
+    );
+
+    if (clientHost != nullptr && serverPeer != nullptr){
+        enet_peer_send(serverPeer,0,packet);
+    }else if (serverHost!=nullptr && clientPeer != nullptr){
+        enet_peer_send(clientPeer,0,packet);
+    }
+}
+```
+
+## ENet initialization
+
+Before any networking can occur, ENet must be initialized:
+
+```cpp main.cpp
+if (enet_initialize () != 0)
+{
+    fprintf (stderr, "An error occurred while initializing ENet.\n");
+    return EXIT_FAILURE;
+}else{
+    std::cout << "enet initialized" << std::endl;
+}
+atexit (enet_deinitialize);
+```
+
+<Warning>
+ENet initialization must happen before creating any hosts or peers. The `atexit` call ensures proper cleanup when the program terminates.
+</Warning>
+
+## Network cleanup
+
+When the game exits, network resources are properly released:
+
+```cpp main.cpp
+if (serverHost != nullptr) {
+    enet_host_destroy(serverHost);
+}
+if (clientHost != nullptr) {
+    enet_host_destroy(clientHost);
+}
+```
+
+## Ping monitoring
+
+The game displays real-time ping to help players monitor connection quality:
+
+```cpp main.cpp
+DrawText(TextFormat("Ping: %d ms", 
+    clientPeer ? clientPeer->roundTripTime : 
+    (serverPeer ? serverPeer->roundTripTime : 0)), 
+    30, 600, 20, BLACK);
+```
+
+ENet automatically tracks the round-trip time for each peer connection.

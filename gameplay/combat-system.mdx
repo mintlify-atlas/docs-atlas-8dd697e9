@@ -1,0 +1,272 @@
+---
+title: Combat system
+description: Understand health, mana, healing, shields, and collision mechanics in Wizard Duel
+---
+
+## Character stats
+
+Each wizard in the game has a set of core stats managed through the Character struct:
+
+```cpp
+struct Character {
+    float health = 300.0f;
+    float mana = 300.0f;
+    double health_timer = 0.0;
+    bool draining_mana = false;
+    bool is_cast = false;
+    float deathTime = 0.0f;
+    bool isDead = false;
+    bool deathSoundPlayed = false;
+    bool is_local = false; // to check if its a local character or opponent
+    Vector2 pos = {};
+    Rectangle rect = { 0, 0, 20, 40 };
+};
+```
+
+<ParamField path="health" type="float" default="300.0f">
+  Current health points. When health reaches 0.0f, the character dies.
+</ParamField>
+
+<ParamField path="mana" type="float" default="300.0f">
+  Current mana points. Required for casting spells and healing.
+</ParamField>
+
+<ParamField path="rect" type="Rectangle" default="{ 0, 0, 20, 40 }">
+  Character collision box (20 pixels wide, 40 pixels tall).
+</ParamField>
+
+## Health system
+
+### Starting health
+
+All characters begin with **300.0f health**. This is displayed as a red bar above each character.
+
+```cpp
+DrawRectangle((int)all_players[i].pos.x - 10, (int)all_players[i].pos.y - 20, 40, 5, DARKGRAY);
+DrawRectangle((int)all_players[i].pos.x - 10, (int)all_players[i].pos.y - 20, (all_players[i].health / 300.0f) * 40, 5, RED);
+```
+
+### Death mechanic
+
+When health drops to or below 0.0f, the character enters death state:
+
+```cpp
+if (all_players[i].health <= 0.0f){
+    all_players[i].isDead = true;
+}
+```
+
+<Warning>
+  Leaving the map boundaries instantly kills you by setting health to 0.0f:
+  ```cpp
+  if (all_players[0].pos.x < 0 || all_players[0].pos.x > 2000 || 
+      all_players[0].pos.y < 0 || all_players[0].pos.y > 2000) {
+      all_players[0].health = 0.0f;
+  }
+  ```
+</Warning>
+
+## Mana system
+
+### Starting mana
+
+All characters begin with **300.0f mana**. This is displayed as a purple bar above each character.
+
+```cpp
+DrawRectangle((int)all_players[i].pos.x - 10, (int)all_players[i].pos.y - 13, 40, 5, DARKGRAY);
+DrawRectangle((int)all_players[i].pos.x - 10, (int)all_players[i].pos.y - 13, (all_players[i].mana / 300.0f) * 40, 5, PURPLE);
+```
+
+### Mana regeneration
+
+Mana regenerates slowly when camera zoom is above 5.0f:
+
+```cpp
+if(all_players[0].mana < 300 && camera.zoom > 5.0f){
+    all_players[0].mana = all_players[0].mana + 0.01f;
+    all_players[0].draining_mana = false;
+}
+```
+
+<Note>
+  Mana regenerates at 0.01f per frame when zoomed in past 5.0f and below max mana.
+</Note>
+
+### Mana drain from zoom
+
+Zooming out below 5.0f drains mana at a rate proportional to zoom level:
+
+```cpp
+if (camera.zoom < 5.0f){
+    all_players[0].mana = all_players[0].mana - (camera.zoom * 0.03f);
+    all_players[0].draining_mana = true;
+}
+```
+
+The game displays "DRAINING MANA" when this occurs:
+
+```cpp
+if (all_players[0].draining_mana){
+    DrawText("DRAINING MANA", 30, 550, 20, BLACK);
+}
+```
+
+<Warning>
+  The drain rate increases as you zoom out further. At camera.zoom = 1.5f (minimum), you drain 0.045f mana per frame.
+</Warning>
+
+## Healing mechanic
+
+Hold the right mouse button to convert mana into health:
+
+```cpp
+if (IsMouseButtonDown(MOUSE_RIGHT_BUTTON) && all_players[0].mana>12.0f){
+    all_players[0].mana = all_players[0].mana - 10.0f;
+    all_players[0].health = all_players[0].health+2.0f;
+}
+```
+
+<ParamField path="Mana cost" type="float">
+  10.0f mana per frame
+</ParamField>
+
+<ParamField path="Health gain" type="float">
+  2.0f health per frame
+</ParamField>
+
+<ParamField path="Minimum mana" type="float">
+  12.0f (healing disabled below this threshold)
+</ParamField>
+
+<Note>
+  The healing conversion ratio is 5:1 (mana to health). At 60 FPS, you can heal 120 health per second while draining 600 mana per second.
+</Note>
+
+## Shields system
+
+When health exceeds 300.0f through healing, shields activate:
+
+```cpp
+if (all_players[0].health > 300.0f){
+    DrawText("SHIELDS UP", 30, 580, 20, BLACK);
+    all_players[0].health_timer += GetFrameTime();
+    if (all_players[0].health_timer >= 2.0) {
+        all_players[0].health = all_players[0].health - 3.0f;
+        all_players[0].health_timer = 0.0f;
+    }
+}
+```
+
+### Shield mechanics
+
+<Tabs>
+  <Tab title="Activation">
+    Shields activate automatically when health > 300.0f
+    
+    The game displays "SHIELDS UP" message on screen
+  </Tab>
+  <Tab title="Decay">
+    Shields decay at 3.0f health every 2 seconds
+    
+    This is tracked using the `health_timer` which accumulates frame time
+  </Tab>
+  <Tab title="Strategy">
+    You can build up "overheal" by continuing to heal past 300.0f health
+    
+    Maximum theoretical health is unlimited, but shields decay over time
+  </Tab>
+</Tabs>
+
+<Warning>
+  Shields decay slowly but continuously. You lose 3.0f health every 2.0 seconds (1.5f per second) when above 300.0f.
+</Warning>
+
+## Collision detection
+
+### Player-tree collision
+
+Players cannot move through trees. The game checks collision using rectangles:
+
+```cpp
+bool checkCollision(Vector2 player_pos, std::vector<Vector2>& trees_pos){
+    Rectangle player_rect = {player_pos.x, player_pos.y, 20, 40};
+
+    for (int i = 0; i < trees_pos.size(); i++){
+        Rectangle tree_rect = {trees_pos[i].x, trees_pos[i].y, 20, 60};
+
+        if (CheckCollisionRecs(player_rect, tree_rect)){
+            return true;
+        }
+    }
+    return false;
+}
+```
+
+When collision is detected, movement is reverted:
+
+```cpp
+Vector2 old_pos = all_players[0].pos;
+if (IsKeyDown(KEY_D)) all_players[0].pos.x += 0.5f;
+// ... other movement keys
+if (checkCollision(all_players[0].pos,tree_pos)){
+    all_players[0].pos = old_pos;
+}
+```
+
+<Note>
+  Player hitbox: 20x40 pixels
+  
+  Tree hitbox: 20x60 pixels
+</Note>
+
+### Spell-tree collision
+
+Spells can collide with and destroy trees:
+
+```cpp
+for (int b = 0; b < ball_vec.size(); b++) {
+    for (int t = 0; t < tree_pos.size(); t++) {
+        Rectangle tree_rect = { tree_pos[t].x, tree_pos[t].y, 20, 60 };
+
+        if (CheckCollisionCircleRec(
+                ball_vec[b].ball_pos,
+                ball_vec[b].ball_r,
+                tree_rect))
+        {
+            if (ball_vec[b].ball_r >= 4.0f){
+                tree_pos[t] = {0, 0};
+            }
+            ball_vec[b].ball_r -= 5.0f;
+            break;
+        }
+    }
+}
+```
+
+<ParamField path="Minimum radius to destroy" type="float">
+  4.0f - spells smaller than this bounce off trees without destroying them
+</ParamField>
+
+<ParamField path="Radius reduction" type="float">
+  5.0f - each tree collision reduces spell radius by this amount
+</ParamField>
+
+## Combat tips
+
+<Tabs>
+  <Tab title="Resource management">
+    - Keep mana above 35.0f to have both spell options available
+    - Don't overheal unless you need the shield buffer
+    - Avoid zooming out below 5.0f for extended periods
+  </Tab>
+  <Tab title="Positioning">
+    - Use trees as cover to block incoming spells
+    - Stay away from map boundaries (0, 0) to (2000, 2000)
+    - Red spells can clear trees with radius 35.0f, creating new paths
+  </Tab>
+  <Tab title="Spell usage">
+    - Red spell: Better for close-range guaranteed hits (larger radius)
+    - Blue spell: Better for long-range sniping (faster speed)
+    - Each tree collision reduces spell radius by 5.0f
+  </Tab>
+</Tabs>

@@ -1,0 +1,107 @@
+---
+title: Installation
+description: Set up Wizard Duel with all required dependencies and build tools
+---
+
+# Installation
+
+Wizard Duel requires several system libraries and build tools to compile and run successfully.
+
+## System requirements
+
+### Operating system
+- Linux (tested on X11-based systems)
+- Windows and macOS may require additional configuration
+
+### Dependencies
+
+The game requires the following libraries:
+
+<Note>
+All dependencies are linked during compilation. See the Makefile for the complete list.
+</Note>
+
+| Library | Purpose |
+|---------|----------|
+| **Raylib** | 2D graphics rendering, windowing, input handling, and audio |
+| **ENet** | Reliable UDP networking for multiplayer |
+| **OpenGL** | Graphics acceleration |
+| **pthread** | Threading support |
+| **X11** | Linux windowing system |
+
+Additional system libraries: `dl`, `rt`, `m` (math)
+
+## Installation steps
+
+<Steps>
+  <Step title="Install build tools">
+    Install the C++ compiler and build essentials:
+
+    ```bash
+    sudo apt update
+    sudo apt install build-essential g++
+    ```
+
+    The project uses C++17 standard.
+  </Step>
+
+  <Step title="Install Raylib">
+    Install Raylib for graphics and game framework:
+
+    ```bash
+    sudo apt install libraylib-dev
+    ```
+
+    Or build from source following the [official Raylib installation guide](https://github.com/raysan5/raylib#build-and-installation).
+  </Step>
+
+  <Step title="Install ENet">
+    Install ENet for multiplayer networking:
+
+    ```bash
+    sudo apt install libenet-dev
+    ```
+
+    This provides the `<enet/enet.h>` header and networking library.
+  </Step>
+
+  <Step title="Install graphics libraries">
+    Install OpenGL and X11 development libraries:
+
+    ```bash
+    sudo apt install libgl1-mesa-dev libx11-dev
+    ```
+
+    These are required for rendering on Linux systems.
+  </Step>
+
+  <Step title="Verify installation">
+    Check that all libraries are installed:
+
+    ```bash
+    pkg-config --modversion raylib
+    ldconfig -p | grep enet
+    ldconfig -p | grep GL
+    ```
+
+    Each command should return version information or library paths.
+  </Step>
+</Steps>
+
+<Warning>
+The game requires assets (island.png, tree.png, cursor.png, self_char.png, and death.mp3) in an `assets/` directory. Make sure these are present before running.
+</Warning>
+
+## Compilation flags
+
+The Makefile uses the following compilation settings:
+
+```makefile
+CC = g++
+CFLAGS = -Wall -Wextra -std=c++17
+LIBS = -lraylib -lenet -lGL -lm -lpthread -ldl -lrt -lX11
+```
+
+- **Wall, Wextra**: Enable comprehensive compiler warnings
+- **std=c++17**: Use C++17 language standard
+- All libraries are dynamically linked

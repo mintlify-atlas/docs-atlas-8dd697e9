@@ -1,0 +1,160 @@
+---
+title: Joining a game
+description: Connect to a hosted game as a client
+---
+
+To join a multiplayer game, a player must connect to an existing server using the `SetupClient()` function. This establishes a connection to the host and allows both players to begin the match.
+
+## How joining works
+
+<Steps>
+  <Step title="Create the client host">
+    First, create a client-side ENet host:
+
+    ```cpp main.cpp
+    clientHost = enet_host_create(
+        NULL,  // create a client host
+        1,     // only 1 outgoing connection
+        2,     // allow up to 2 channels
+        0,     // unlimited download bandwidth
+        0      // unlimited upload bandwidth
+    );
+    ```
+
+    Passing `NULL` as the first parameter creates a client host that can initiate connections but not accept them.
+  </Step>
+
+  <Step title="Verify client creation">
+    Check if the client host was created successfully:
+
+    ```cpp main.cpp
+    if (clientHost == NULL){
+        printf("failed to create client host\n");
+        return false;
+    }
+    ```
+
+    If creation fails, the game returns to the main menu.
+  </Step>
+
+  <Step title="Configure server address">
+    Set up the address of the server to connect to:
+
+    ```cpp main.cpp
+    ENetAddress address;
+    enet_address_set_host(&address, SERVER_IP);
+    address.port = SERVER_PORT;
+    ```
+
+    The `enet_address_set_host()` function resolves the hostname or IP address (by default "127.0.0.1") to an ENet address.
+  </Step>
+
+  <Step title="Connect to the server">
+    Initiate the connection to the server:
+
+    ```cpp main.cpp
+    serverPeer = enet_host_connect(clientHost,
+        &address,  
+        2,  // number of channels
+        0   // user data
+    );
+    if (serverPeer == NULL){
+        printf("failed to connect to server");
+        return false;
+    }
+    printf("Connecting to %s:%d...\n",SERVER_IP,SERVER_PORT);
+    return true;
+    ```
+
+    This returns a peer object representing the connection to the server.
+  </Step>
+
+  <Step title="Wait for connection confirmation">
+    The game enters the `JOINING` state and waits for the connection to be established:
+
+    ```cpp main.cpp
+    ENetEvent event;
+    while (enet_host_service(clientHost, &event, 0) > 0) {
+        if (event.type == ENET_EVENT_TYPE_CONNECT) {
+            printf("Connected to server!\n");
+            connectionState = "CONNECTED";
+            
+            // Start the game
+            state = "MULTIPLAYER";
+        }
+    }
+    ```
+
+    Once the connection is confirmed, the game transitions to the multiplayer gameplay state.
+  </Step>
+</Steps>
+
+## Complete SetupClient function
+
+```cpp main.cpp
+bool SetupClient() {
+    // create a client host
+    clientHost = enet_host_create(
+        NULL,
+        1,
+        2,
+        0,
+        0
+    );
+    if (clientHost == NULL){
+        printf("failed to create client host\n");
+        return false;
+    }
+
+    ENetAddress address;
+    enet_address_set_host(&address, SERVER_IP);
+    address.port = SERVER_PORT;
+
+    serverPeer = enet_host_connect(clientHost,
+        &address,  
+        2,
+        0
+    );
+    if (serverPeer == NULL){
+        printf("failed to connect to server");
+        return false;
+    }
+    printf("Connecting to %s:%d...\n",SERVER_IP,SERVER_PORT);
+    return true;
+}
+```
+
+## Network variables
+
+The following global variables manage the client connection:
+
+```cpp main.cpp
+ENetHost* clientHost = nullptr;
+ENetPeer* serverPeer = nullptr; // for client connection to server
+```
+
+<Note>
+When joining, the client uses `clientHost` to manage its networking and stores the server connection in `serverPeer`.
+</Note>
+
+## Connection to localhost vs LAN
+
+By default, the game connects to `127.0.0.1` (localhost), which only works if both players are on the same machine.
+
+For LAN play, modify the `SERVER_IP` constant to the host's local network IP address:
+
+```cpp main.cpp
+const char* SERVER_IP = "192.168.1.100"; // Replace with host's IP
+```
+
+<Warning>
+Ensure both players are on the same network and the host's firewall allows incoming connections on port 7777.
+</Warning>
+
+## Troubleshooting
+
+If connection fails:
+- Verify the server is running and in the `HOSTING` state
+- Check that `SERVER_IP` points to the correct host address
+- Ensure port 7777 is not blocked by firewall rules
+- Confirm ENet has been initialized before calling `SetupClient()`

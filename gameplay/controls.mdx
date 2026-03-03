@@ -1,0 +1,133 @@
+---
+title: Controls
+description: Master the keyboard and mouse controls for Wizard Duel
+---
+
+## Movement controls
+
+Use WASD keys to move your wizard around the battlefield:
+
+<ParamField path="W" type="key">
+  Move up (decreases Y position by 0.5f per frame)
+</ParamField>
+
+<ParamField path="A" type="key">
+  Move left (decreases X position by 0.5f per frame)
+</ParamField>
+
+<ParamField path="S" type="key">
+  Move down (increases Y position by 0.5f per frame)
+</ParamField>
+
+<ParamField path="D" type="key">
+  Move right (increases X position by 0.5f per frame)
+</ParamField>
+
+```cpp
+if (IsKeyDown(KEY_D)) all_players[0].pos.x += 0.5f;
+else if (IsKeyDown(KEY_A)) all_players[0].pos.x -= 0.5f;
+else if (IsKeyDown(KEY_S)) all_players[0].pos.y += 0.5f;
+else if (IsKeyDown(KEY_W)) all_players[0].pos.y -= 0.5f;
+```
+
+<Note>
+  Movement is blocked when colliding with trees. The game automatically reverts your position if you try to move into a tree.
+</Note>
+
+## Spell casting
+
+Cast spells by holding a spell key and clicking the left mouse button:
+
+<Tabs>
+  <Tab title="Red spell">
+    Hold **KEY_ONE** (1) and click **Left Mouse Button** to cast the red spell
+    
+    ```cpp
+    if (IsKeyDown(KEY_ONE)){
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)){
+            if (all_players[0].mana >= 25.0f){
+                Ball red_ball;
+                red_ball.spellColor = bloodRed;
+                red_ball.ball_speed = 2.0f;
+                red_ball.ball_r = 35.0f;
+            }
+        }
+    }
+    ```
+  </Tab>
+  <Tab title="Blue spell">
+    Hold **KEY_TWO** (2) and click **Left Mouse Button** to cast the blue spell
+    
+    ```cpp
+    if (IsKeyDown(KEY_TWO)){
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)){
+            if (all_players[0].mana >= 35.0f){
+                Ball blue_ball;
+                blue_ball.spellColor = DARKBLUE;
+                blue_ball.ball_speed = 4.0f;
+            }
+        }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Healing
+
+<ParamField path="Right Mouse Button" type="mouse">
+  Hold to drain mana and restore health. Drains 10.0f mana and adds 2.0f health per frame.
+</ParamField>
+
+```cpp
+if (IsMouseButtonDown(MOUSE_RIGHT_BUTTON) && all_players[0].mana>12.0f){
+    all_players[0].mana = all_players[0].mana - 10.0f;
+    all_players[0].health = all_players[0].health+2.0f;
+}
+```
+
+<Warning>
+  You need at least 12.0f mana to use healing. The ability drains mana rapidly at 10.0f per frame.
+</Warning>
+
+## Camera controls
+
+Adjust your view of the battlefield with zoom controls:
+
+<ParamField path="Z" type="key">
+  Zoom in (increases camera zoom by 0.02f per frame)
+</ParamField>
+
+<ParamField path="X" type="key">
+  Zoom out (decreases camera zoom by 0.02f per frame)
+</ParamField>
+
+<ParamField path="R" type="key">
+  Reset zoom to 9.9f
+</ParamField>
+
+```cpp
+if (IsKeyDown(KEY_Z)){
+    camera.zoom += 0.02f;
+}
+else if (IsKeyDown(KEY_X)){
+    camera.zoom -= 0.02f;
+}
+
+if (camera.zoom > 10.0f) camera.zoom = 10.0f;
+else if (camera.zoom < 1.5f) camera.zoom = 1.5f;
+
+if (IsKeyPressed(KEY_R))
+{
+    camera.zoom = 9.9f;
+}
+```
+
+<Warning>
+  Zooming out below 5.0f drains your mana! The mana drain rate is calculated as `camera.zoom * 0.03f` per frame.
+</Warning>
+
+## Debug controls
+
+<ParamField path="I" type="key">
+  Debug key - reduces health by 50.0f per frame (for testing purposes)
+</ParamField>

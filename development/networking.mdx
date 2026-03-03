@@ -1,0 +1,392 @@
+---
+title: Networking implementation
+description: Deep dive into Wizard Duel's multiplayer networking using ENet, including connection handling, packet synchronization, and position updates
+---
+
+## Overview
+
+Wizard Duel uses ENet, a reliable UDP networking library, for multiplayer functionality. The implementation supports peer-to-peer connections with one player acting as host (server) and another as client.
+
+## Network architecture
+
+### Connection model
+
+**Host (Server)**:
+- Listens on port 7777
+- Accepts one client connection
+- Sends/receives position updates
+
+**Client**:
+- Connects to server IP (default: 127.0.0.1)
+- Sends local position to server
+- Receives opponent position from server
+
+### Global network state
+
+```cpp
+std::string connectionState = "DISCONNECTED";
+ENetHost* clientHost = nullptr;
+ENetPeer* serverPeer = nullptr; // for client connection to server
+ENetHost* serverHost = nullptr; // for host server
+ENetPeer* clientPeer = nullptr; // for host connection to client
+
+const char* SERVER_IP = "127.0.0.1";
+const int SERVER_PORT = 7777;
+```
+
+<Note>
+The game uses separate host/peer pointers for client and server roles, allowing either player to act as host.
+</Note>
+
+## ENet initialization
+
+ENet must be initialized before any network operations:
+
+```cpp
+if (enet_initialize() != 0) {
+    fprintf(stderr, "An error occurred while initializing ENet.\n");
+    return EXIT_FAILURE;
+} else {
+    std::cout << "enet initialized" << std::endl;
+}
+atexit(enet_deinitialize);
+```
+
+The `atexit` call ensures proper cleanup when the program terminates.
+
+## Setting up a host (server)
+
+The `SetupHost()` function creates a server that listens for connections:
+
+```cpp
+bool SetupHost() {
+    ENetAddress address;
+    address.host = ENET_HOST_ANY;
+    address.port = SERVER_PORT;
+    
+    // Create the server host
+    serverHost = enet_host_create(
+        &address,
+        1,  // max clients
+        2,  // max channels
+        0,  // incoming bandwidth (0 = unlimited)
+        0   // outgoing bandwidth (0 = unlimited)
+    );
+    
+    if (serverHost == NULL) {
+        printf("failed to create server host");
+        return false;
+    }
+    
+    printf("Server hosting on port %d\n", SERVER_PORT);
+    return true;
+}
+```
+
+### Parameters explained
+
+<Accordion title="Max clients: 1">
+The game is designed for 1v1 battles, so only one client connection is allowed.
+</Accordion>
+
+<Accordion title="Max channels: 2">
+Provides two communication channels for separating different types of game data (though currently only one is used).
+</Accordion>
+
+<Accordion title="Bandwidth: 0 (unlimited)">
+No bandwidth limiting is applied, allowing maximum throughput for local network play.
+</Accordion>
+
+## Setting up a client
+
+The `SetupClient()` function connects to an existing host:
+
+```cpp
+bool SetupClient() {
+    // Create a client host
+    clientHost = enet_host_create(
+        NULL,  // no address (client doesn't bind to port)
+        1,     // max outgoing connections
+        2,     // max channels
+        0,     // incoming bandwidth
+        0      // outgoing bandwidth
+    );
+    
+    if (clientHost == NULL) {
+        printf("failed to create client host\n");
+        return false;
+    }
+
+    ENetAddress address;
+    enet_address_set_host(&address, SERVER_IP);
+    address.port = SERVER_PORT;
+
+    serverPeer = enet_host_connect(
+        clientHost,
+        &address,
+        2,  // channels
+        0   // user data
+    );
+    
+    if (serverPeer == NULL) {
+        printf("failed to connect to server");
+        return false;
+    }
+    
+    printf("Connecting to %s:%d...\n", SERVER_IP, SERVER_PORT);
+    return true;
+}
+```
+
+<Tip>
+Clients pass `NULL` as the address to `enet_host_create`, meaning they don't bind to a specific port.
+</Tip>
+
+## Position packet structure
+
+Player positions are synchronized using a simple struct:
+
+```cpp
+struct PositionPacket {
+    float x;
+    float y;
+};
+```
+
+This minimal packet structure keeps network traffic low, sending only 8 bytes per position update.
+
+## Event handling
+
+The game processes network events using `enet_host_service`:
+
+### Connection events (HOST state)
+
+```cpp
+ENetEvent event;
+while (enet_host_service(serverHost, &event, 0) > 0) {
+    if (event.type == ENET_EVENT_TYPE_CONNECT) {
+        printf("Client connected!\n");
+        clientPeer = event.peer;
+        connectionState = "CONNECTED";
+        
+        // Initialize players and transition to MULTIPLAYER
+        all_players.clear();
+        all_players.push_back(player);
+        all_players[0].is_local = true;
+        
+        Character opponent;
+        opponent.pos.x = x_distr(gen);
+        opponent.pos.y = y_distr(gen);
+        opponent.is_local = false;
+        all_players.push_back(opponent);
+        
+        state = "MULTIPLAYER";
+    }
+}
+```
+
+### Connection events (JOIN state)
+
+```cpp
+ENetEvent event;
+while (enet_host_service(clientHost, &event, 0) > 0) {
+    if (event.type == ENET_EVENT_TYPE_CONNECT) {
+        printf("Connected to server!\n");
+        connectionState = "CONNECTED";
+        
+        // Initialize players and transition to MULTIPLAYER
+        all_players.clear();
+        all_players.push_back(player);
+        all_players[0].is_local = true;
+        
+        Character opponent;
+        opponent.pos.x = x_distr(gen);
+        opponent.pos.y = y_distr(gen);
+        opponent.is_local = false;
+        all_players.push_back(opponent);
+        
+        state = "MULTIPLAYER";
+    }
+}
+```
+
+<Note>
+The timeout parameter in `enet_host_service` is set to 0, making it non-blocking. This allows the game to continue rendering while checking for network events.
+</Note>
+
+## Position synchronization
+
+In the MULTIPLAYER state, the game continuously syncs positions:
+
+### Receiving position updates
+
+```cpp
+ENetEvent event;
+if (clientHost != nullptr) {
+    while (enet_host_service(clientHost, &event, 0) > 0) {
+        if (event.type == ENET_EVENT_TYPE_RECEIVE) {
+            PositionPacket* posPacket = (PositionPacket*)event.packet->data;
+            all_players[1].pos.x = posPacket->x;
+            all_players[1].pos.y = posPacket->y;
+            enet_packet_destroy(event.packet);
+        }
+    }
+} else if (serverHost != nullptr) {
+    while (enet_host_service(serverHost, &event, 0) > 0) {
+        if (event.type == ENET_EVENT_TYPE_RECEIVE) {
+            PositionPacket* posPacket = (PositionPacket*)event.packet->data;
+            all_players[1].pos.x = posPacket->x;
+            all_players[1].pos.y = posPacket->y;
+            enet_packet_destroy(event.packet);
+        }
+    }
+}
+```
+
+### Sending position updates
+
+Position updates are sent only when the player moves:
+
+```cpp
+Vector2 old_pos = all_players[0].pos;
+if (all_players[0].is_local) {
+    if (IsKeyDown(KEY_D)) all_players[0].pos.x += 0.5f;
+    else if (IsKeyDown(KEY_A)) all_players[0].pos.x -= 0.5f;
+    else if (IsKeyDown(KEY_S)) all_players[0].pos.y += 0.5f;
+    else if (IsKeyDown(KEY_W)) all_players[0].pos.y -= 0.5f;
+    
+    if (checkCollision(all_players[0].pos, tree_pos)) {
+        all_players[0].pos = old_pos;
+    }
+}
+
+// Send update if position changed
+if (all_players[0].pos.x != old_pos.x || all_players[0].pos.y != old_pos.y) {
+    PositionPacket posPacket;
+    posPacket.x = all_players[0].pos.x;
+    posPacket.y = all_players[0].pos.y;
+
+    ENetPacket* packet = enet_packet_create(
+        &posPacket,
+        sizeof(PositionPacket),
+        ENET_PACKET_FLAG_RELIABLE
+    );
+
+    if (clientHost != nullptr && serverPeer != nullptr) {
+        enet_peer_send(serverPeer, 0, packet);
+    } else if (serverHost != nullptr && clientPeer != nullptr) {
+        enet_peer_send(clientPeer, 0, packet);
+    }
+}
+```
+
+<Tip>
+Using `ENET_PACKET_FLAG_RELIABLE` ensures position updates arrive in order and are resent if lost, preventing desync issues.
+</Tip>
+
+## Packet creation and sending
+
+### Creating packets
+
+```cpp
+ENetPacket* packet = enet_packet_create(
+    &posPacket,                    // data pointer
+    sizeof(PositionPacket),        // data size
+    ENET_PACKET_FLAG_RELIABLE     // flags
+);
+```
+
+### Sending packets
+
+**From client to server**:
+```cpp
+if (clientHost != nullptr && serverPeer != nullptr) {
+    enet_peer_send(serverPeer, 0, packet);
+}
+```
+
+**From server to client**:
+```cpp
+if (serverHost != nullptr && clientPeer != nullptr) {
+    enet_peer_send(clientPeer, 0, packet);
+}
+```
+
+The channel parameter (0) specifies which of the 2 available channels to use.
+
+## Latency monitoring
+
+The game displays real-time ping information:
+
+```cpp
+DrawText(TextFormat("Ping: %d ms", 
+    clientPeer ? clientPeer->roundTripTime : 
+    (serverPeer ? serverPeer->roundTripTime : 0)), 
+    30, 600, 20, BLACK);
+```
+
+ENet automatically tracks round-trip time (RTT) for each peer connection.
+
+## Network cleanup
+
+Proper cleanup is essential to free network resources:
+
+```cpp
+// At program exit
+if (serverHost != nullptr) {
+    enet_host_destroy(serverHost);
+}
+if (clientHost != nullptr) {
+    enet_host_destroy(clientHost);
+}
+```
+
+This releases all associated connections and memory before the program terminates.
+
+## Event types
+
+ENet provides several event types (though only these are currently used):
+
+<Accordion title="ENET_EVENT_TYPE_CONNECT">
+Fired when a connection is established. Used to transition from HOST/JOIN states to MULTIPLAYER state.
+
+```cpp
+if (event.type == ENET_EVENT_TYPE_CONNECT) {
+    printf("Client connected!\n");
+    clientPeer = event.peer;
+}
+```
+</Accordion>
+
+<Accordion title="ENET_EVENT_TYPE_RECEIVE">
+Fired when a packet is received. Contains packet data that must be manually destroyed after processing.
+
+```cpp
+if (event.type == ENET_EVENT_TYPE_RECEIVE) {
+    PositionPacket* posPacket = (PositionPacket*)event.packet->data;
+    all_players[1].pos.x = posPacket->x;
+    all_players[1].pos.y = posPacket->y;
+    enet_packet_destroy(event.packet);
+}
+```
+</Accordion>
+
+<Accordion title="ENET_EVENT_TYPE_DISCONNECT (not implemented)">
+Would be fired when a peer disconnects. Currently not handled, which could lead to undefined behavior if a player disconnects mid-game.
+</Accordion>
+
+## Limitations and future improvements
+
+**No spell synchronization**: Currently only position data is synced. Spells are not transmitted over the network, meaning players can't damage each other in multiplayer.
+
+**No disconnect handling**: The game doesn't handle ENET_EVENT_TYPE_DISCONNECT events.
+
+**No health/mana sync**: Health and mana values are not synchronized between players.
+
+**No lobby system**: Players must manually coordinate who hosts and who joins.
+
+**Local network only**: Default configuration uses 127.0.0.1 (localhost).
+
+<Note>
+To play over LAN, change `SERVER_IP` to the host's local IP address (e.g., "192.168.1.100").
+</Note>
