@@ -1,0 +1,69 @@
+{
+  "projectType": "general",
+  "projectName": "Wizard Duel",
+  "projectDescription": "A multiplayer 2D wizard battle game built with C++, Raylib, and ENet for networked gameplay.",
+  "theme": "aspen",
+  "primaryColor": "#8B4513",
+  "lightColor": "#D2691E",
+  "darkColor": "#654321",
+  "navigation": {
+    "groups": [
+      {
+        "group": "Getting Started",
+        "pages": [
+          "introduction",
+          "installation",
+          "quickstart"
+        ]
+      },
+      {
+        "group": "Game Mechanics",
+        "pages": [
+          "gameplay/controls",
+          "gameplay/spells",
+          "gameplay/combat-system"
+        ]
+      },
+      {
+        "group": "Multiplayer",
+        "pages": [
+          "multiplayer/overview",
+          "multiplayer/hosting",
+          "multiplayer/joining"
+        ]
+      },
+      {
+        "group": "Development",
+        "pages": [
+          "development/architecture",
+          "development/building",
+          "development/networking"
+        ]
+      },
+      {
+        "group": "Reference",
+        "pages": [
+          "reference/game-structures",
+          "reference/configuration"
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Real-time multiplayer wizard battles using ENet networking",
+    "Multiple spell types with different speeds and damage",
+    "Health and mana management system",
+    "Dynamic camera zoom with mana drain mechanic",
+    "Host or join multiplayer games",
+    "Single-player practice mode"
+  ],
+  "publicApiSurface": [
+    "Character struct (health, mana, position)",
+    "Ball struct (spell projectiles)",
+    "PositionPacket (network protocol)",
+    "SetupHost() - Initialize game server",
+    "SetupClient() - Connect to game server",
+    "checkCollision() - Collision detection",
+    "getDirectionToMouse() - Directional aiming"
+  ]
+}
