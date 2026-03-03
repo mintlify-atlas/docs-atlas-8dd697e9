@@ -1,0 +1,315 @@
+---
+title: Functions
+description: Core utility functions for collision detection, world generation, and networking setup in Wizard Duel.
+---
+
+## Collision detection
+
+### checkCollision
+
+Checks if a player position collides with any tree in the game world.
+
+```cpp
+bool checkCollision(Vector2 player_pos, std::vector<Vector2>& trees_pos)
+```
+
+**Parameters:**
+
+<ParamField path="player_pos" type="Vector2">
+  World position of the player to check for collision.
+</ParamField>
+
+<ParamField path="trees_pos" type="std::vector<Vector2>&">
+  Reference to vector containing positions of all trees in the world.
+</ParamField>
+
+**Returns:** `bool` - `true` if the player collides with any tree, `false` otherwise.
+
+**Implementation:**
+
+```cpp
+bool checkCollision(Vector2 player_pos, std::vector<Vector2>& trees_pos){
+    Rectangle player_rect = {player_pos.x, player_pos.y, 20, 40};
+
+    for (int i = 0; i < trees_pos.size(); i++){
+        Rectangle tree_rect = {trees_pos[i].x, trees_pos[i].y, 20, 60};
+
+        if (CheckCollisionRecs(player_rect, tree_rect)){
+            return true;
+        }
+    }
+    return false;
+}
+```
+
+<Note>The player hitbox is 20×40 pixels and tree hitbox is 20×60 pixels. Uses Raylib's `CheckCollisionRecs()` for rectangle collision detection.</Note>
+
+**Usage:**
+
+```cpp
+Vector2 old_pos = all_players[0].pos;
+if (IsKeyDown(KEY_D)) all_players[0].pos.x += 0.5f;
+
+if (checkCollision(all_players[0].pos, tree_pos)){
+    all_players[0].pos = old_pos;  // Revert to old position
+}
+```
+
+---
+
+## World generation
+
+### tree_spawner
+
+Creates texture instances for all trees in the game world by loading and duplicating the tree image.
+
+```cpp
+std::vector<Texture2D> tree_spawner()
+```
+
+**Returns:** `std::vector<Texture2D>` - Vector containing 115 tree textures.
+
+**Implementation:**
+
+```cpp
+std::vector<Texture2D> tree_spawner(){
+    std::vector<Texture2D> vec(number_of_trees);
+    Image tree_img = LoadImage("assets/tree.png");
+    for (int i=0;i<number_of_trees;i++){
+        vec[i] = LoadTextureFromImage(tree_img);
+    }
+    UnloadImage(tree_img);
+    return vec;
+}
+```
+
+<Note>This function loads the tree image once, creates 115 texture copies, then unloads the source image to free memory.</Note>
+
+### tree_positions
+
+Generates random positions for all trees within the game world boundaries using uniform distribution.
+
+```cpp
+std::vector<Vector2> tree_positions()
+```
+
+**Returns:** `std::vector<Vector2>` - Vector containing 115 random tree positions within world bounds (0-2000 range).
+
+**Implementation:**
+
+```cpp
+std::vector<Vector2> tree_positions(){
+    std::vector<Vector2> vec(number_of_trees);
+    int lower_bound = 000;
+    int upper_bound = 2000;
+
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> distr(lower_bound, upper_bound);
+
+    for (int i=0;i<number_of_trees;i++){
+        float random_x = distr(gen);
+        float random_y = distr(gen);
+        vec[i] = {random_x,random_y};
+    }
+    return vec;
+}
+```
+
+<Info>Uses Mersenne Twister (`std::mt19937`) for random number generation with uniform distribution across the 2000×2000 world map.</Info>
+
+---
+
+## Directional aiming
+
+### getDirectionToMouse
+
+Calculates the compass direction from the player to the mouse cursor position for directional indicators.
+
+```cpp
+std::string getDirectionToMouse(Vector2 player_pos, Vector2 mouse_world)
+```
+
+**Parameters:**
+
+<ParamField path="player_pos" type="Vector2">
+  World position of the player character.
+</ParamField>
+
+<ParamField path="mouse_world" type="Vector2">
+  World position of the mouse cursor (converted from screen space using camera).
+</ParamField>
+
+**Returns:** `std::string` - One of eight compass directions: "east", "southeast", "south", "southwest", "west", "northwest", "north", "northeast".
+
+**Implementation:**
+
+```cpp
+std::string getDirectionToMouse(Vector2 player_pos, Vector2 mouse_world){
+    float angle = atan2(mouse_world.y - player_pos.y,
+                        mouse_world.x - player_pos.x);
+
+    float deg = angle * RAD2DEG;
+
+    if (deg < 0) deg += 360;
+
+    if (deg >= 337.5 || deg < 22.5)   return "east";
+    if (deg < 67.5)   return "southeast";
+    if (deg < 112.5)  return "south";
+    if (deg < 157.5)  return "southwest";
+    if (deg < 202.5)  return "west";
+    if (deg < 247.5)  return "northwest";
+    if (deg < 292.5)  return "north";
+    return "northeast";
+}
+```
+
+**Direction mapping:**
+
+| Angle Range | Direction |
+|------------|-----------|
+| 337.5° - 22.5° | East |
+| 22.5° - 67.5° | Southeast |
+| 67.5° - 112.5° | South |
+| 112.5° - 157.5° | Southwest |
+| 157.5° - 202.5° | West |
+| 202.5° - 247.5° | Northwest |
+| 247.5° - 292.5° | North |
+| 292.5° - 337.5° | Northeast |
+
+<Tip>This function uses `atan2()` to calculate the angle between two points, then converts to degrees and maps to one of eight cardinal/intercardinal directions.</Tip>
+
+---
+
+## Network setup
+
+### SetupHost
+
+Initializes the game server to host multiplayer matches, binding to the specified port and waiting for client connections.
+
+```cpp
+bool SetupHost()
+```
+
+**Returns:** `bool` - `true` if server creation succeeds, `false` on failure.
+
+**Implementation:**
+
+```cpp
+bool SetupHost(){
+    ENetAddress address;
+    address.host = ENET_HOST_ANY;
+    address.port = SERVER_PORT;
+    // making the server host
+    serverHost = enet_host_create(
+        &address,
+        1, // max clients
+        2, // max channels
+        0, // incoming bandwidth (0 = unlimited)
+        0
+    );
+    if (serverHost == NULL){
+        printf("failed to create server host");
+        return false;
+    }
+    printf("Server hosting on port %d\n", SERVER_PORT);
+    return true;
+}
+```
+
+**Configuration:**
+
+<ParamField path="address.host" type="enet_uint32" default="ENET_HOST_ANY">
+  Binds to all available network interfaces.
+</ParamField>
+
+<ParamField path="address.port" type="enet_uint16" default="7777">
+  Port number for incoming connections (SERVER_PORT constant).
+</ParamField>
+
+<ParamField path="max clients" type="size_t" default="1">
+  Maximum number of simultaneous client connections (1v1 gameplay).
+</ParamField>
+
+<ParamField path="max channels" type="size_t" default="2">
+  Number of network channels for communication.
+</ParamField>
+
+<Note>See [Hosting](/multiplayer/hosting) for complete multiplayer hosting guide.</Note>
+
+### SetupClient
+
+Initializes the game client and attempts to connect to a game server at the configured IP address and port.
+
+```cpp
+bool SetupClient()
+```
+
+**Returns:** `bool` - `true` if client creation and connection initiation succeed, `false` on failure.
+
+**Implementation:**
+
+```cpp
+bool SetupClient() {
+    // create a client host
+    clientHost = enet_host_create(
+        NULL,
+        1,
+        2,
+        0,
+        0
+    );
+    if (clientHost == NULL){
+        printf("failed to create client host\n");
+        return false;
+    }
+
+    ENetAddress address;
+    enet_address_set_host(&address, SERVER_IP);
+    address.port = SERVER_PORT;
+
+    serverPeer = enet_host_connect(clientHost,
+        &address,  
+        2,
+        0
+    );
+    if (serverPeer == NULL){
+        printf("failed to connect to server");
+        return false;
+    }
+    printf("Connecting to %s:%d...\n", SERVER_IP, SERVER_PORT);
+    return true;
+}
+```
+
+**Configuration:**
+
+<ParamField path="SERVER_IP" type="const char*" default="127.0.0.1">
+  Target server IP address for connection.
+</ParamField>
+
+<ParamField path="SERVER_PORT" type="const int" default="7777">
+  Target server port number.
+</ParamField>
+
+<Note>See [Joining](/multiplayer/joining) for complete multiplayer joining guide.</Note>
+
+---
+
+## Global variables
+
+Key global variables used throughout the game:
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `connectionState` | `std::string` | `"DISCONNECTED"` | Current network connection state |
+| `clientHost` | `ENetHost*` | `nullptr` | Client network host instance |
+| `serverPeer` | `ENetPeer*` | `nullptr` | Client's connection to server |
+| `serverHost` | `ENetHost*` | `nullptr` | Server network host instance |
+| `clientPeer` | `ENetPeer*` | `nullptr` | Server's connection to client |
+| `bloodRed` | `Color` | `{128, 0, 0, 255}` | Color for red spell projectiles |
+| `spellColor` | `Color` | `RED` | Default spell color |
+| `number_of_trees` | `int` | `115` | Total trees in game world |
+| `state` | `std::string` | `"MENU"` | Current game state |
+
+<Warning>These are global variables accessible throughout the codebase. Modify with caution in multiplayer contexts.</Warning>
